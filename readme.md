@@ -1,8 +1,7 @@
----
-title: "Replication for the article 'Estimation of copulas via Maximum Mean Discrepancy'"
-author: "Pierre Alquier, Badr-Eddine Chérief-Abdellatif, Alexis Derumigny, and Jean-David Fermanian"
----
+# Replication for the article 'Estimation of copulas via Maximum Mean Discrepancy'
+Pierre Alquier, Badr-Eddine Chérief-Abdellatif, Alexis Derumigny, and Jean-David Fermanian
 
+---
 
 This file describes the procedure to use in order to replicate the numerical results
 of the article 'Estimation of copulas via Maximum Mean Discrepancy'.
