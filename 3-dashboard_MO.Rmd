@@ -1,0 +1,206 @@
+---
+title: MSE of the Marshall-Olkin copula as a function of Kendall's tau and the tuning
+  parameter gamma
+date: "15/06/2021"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: rows
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(tidyverse)
+library(plotly)
+```
+
+
+```{r, data loading and aggregation}
+source("2-aggregation.R")
+```
+
+
+
+```{r, functions for main plotting}
+
+my_plots <- function(nameEstimator_ = "MMD_gaussian",
+                     nOutliers_ = 0, n_ = 1000)
+{
+  # 1 - Data preparation ---------------------------------------------
+  
+  aggregated_filtered = totalAggregated_MO %>%
+    filter(n == n_,
+           nameEstimator == nameEstimator_,
+           nOutliers == nOutliers_)
+  
+  if (nrow(aggregated_filtered) == 0){
+    print("No corresponding observations")
+    return (NULL)
+  }
+  
+  # Construction of the matrix:
+  # columns: the different values of gamma
+  # lines: the different truePars
+  toBePlotted_gamma = aggregated_filtered %>%
+    mutate(gamma_txt = formatC(gamma, format = "f")) %>%
+    ungroup() %>%
+    select(truePar, MSE, gamma_txt) %>%
+    pivot_wider(values_from = MSE,
+                names_sort = TRUE,
+                names_from = gamma_txt,
+                names_prefix = "gamma_") %>%
+    select(where(function (x) {all(!is.na(x))}))
+  
+  if (nrow(toBePlotted_gamma) %in% c(0,1)){
+    return(aggregated_filtered %>%
+             mutate(gamma_txt = formatC(gamma, format = "f")) %>%
+             ungroup() %>%
+             select(truePar, MSE, gamma_txt) %>%
+             pivot_wider(values_from = MSE,
+                         names_sort = TRUE,
+                         names_from = gamma_txt,
+                         names_prefix = "gamma_"))
+  }
+  
+  toBePlotted_gamma_matrix = as.matrix.data.frame( toBePlotted_gamma[,-1] )
+  
+  toBePlotted_gamma_MSE_CI = aggregated_filtered %>%
+    mutate(gamma_txt = formatC(gamma, format = "f"),
+           MSE_q05_txt = formatC(MSE_q05, format = "fg", digits = 3),
+           MSE_q95_txt = formatC(MSE_q95, format = "fg", digits = 3),
+           MSE_CI = paste0("[",MSE_q05_txt,";",MSE_q95_txt, "]"
+                           # "<br>Nrep=", nRep, sep = ""
+           )) %>%
+    ungroup() %>%
+    select(truePar, MSE_CI, gamma_txt) %>%
+    pivot_wider(values_from = MSE_CI,
+                names_sort = TRUE,
+                names_from = gamma_txt,
+                names_prefix = "gamma_") %>%
+    select(where(function (x) {all(!is.na(x))}))
+  
+  vecPossibleGammas = as.numeric(str_split_fixed(
+    string = colnames(toBePlotted_gamma)[-1],
+    pattern = "_", n = 2)[,2])
+  
+  # # Finding the best gamma for each truePar
+  # toBePlottedBestGamma = aggregated_filtered %>%
+  #   ungroup() %>%
+  #   group_by(truePar) %>%
+  #   summarise(bestGamma = gamma[which.min(MSE)],
+  #             MSE = MSE[which.min(MSE)])
+  
+  # 2 - Plotting the graphs ---------------------------------------
+  
+  plot_logScale <- plot_ly(z = toBePlotted_gamma_matrix,
+                           x = vecPossibleGammas,
+                           y = toBePlotted_gamma$truePar) %>%
+    add_surface(
+      surfacecolor = ( - log10( toBePlotted_gamma_matrix ) + 4)^2 ,
+      # colorscale = "Rainbow",
+      # lighting = list(ambient = 0.3),
+      showscale = FALSE,
+      customdata = toBePlotted_gamma_MSE_CI[,-1],
+      hovertemplate = paste(
+        '<b>alpha</b>: %{y:.2f}',
+        '<br><b>gamma</b>: %{x:.2f}',
+        '<br><b>MSE</b>: %{z:.6f}',
+        '<br>%{customdata}',
+        '<extra></extra>')) %>%
+    # add_trace(x = toBePlottedBestGamma$bestGamma,
+    #           y = toBePlottedBestGamma$truePar,
+    #           z = toBePlottedBestGamma$MSE*1.08,
+    #           type = "scatter3d",
+    #           mode = "lines+markers",
+    #           line = list(width = 4, color = "red", shape = "spline") ,
+    #           showlegend = FALSE,
+    #           hoverinfo = "none") %>%
+    layout(
+      scene = list(
+        xaxis = list(title = "Gamma", dtick = 1),
+        yaxis = list(title = "True alpha"),
+        zaxis = list(title = "MSE", type = "log", dtick = 1),
+        aspectmode = "manual", aspectratio = list(x=1.5, y=1.5, z=1)
+      )
+    )
+  
+  plot_LinearScale <- plot_ly(z = toBePlotted_gamma_matrix,
+                              x = vecPossibleGammas,
+                              y = toBePlotted_gamma$truePar) %>%
+    add_surface(
+      surfacecolor = ( - log10( toBePlotted_gamma_matrix ) + 4 )^2 ,
+      # colorscale = "Rainbow",
+      # lighting = list(ambient = 0.3),
+      showscale = FALSE,
+      customdata = toBePlotted_gamma_MSE_CI[,-1],
+      hovertemplate = paste(
+        '<b>alpha</b>: %{y:.2f}',
+        '<br><b>gamma</b>: %{x:.2f}',
+        '<br><b>MSE</b>: %{z:.6f}',
+        '<br>%{customdata}',
+        '<extra></extra>')) %>%
+    # add_trace(x = toBePlottedBestGamma$bestGamma,
+    #           y = toBePlottedBestGamma$truePar,
+    #           z = toBePlottedBestGamma$MSE*1.08,
+    #           type = "scatter3d",
+    #           mode = "lines+markers",
+    #           line = list(width = 4, color = "red", shape = "spline") ,
+    #           showlegend = FALSE,
+    #           hoverinfo = "none") %>%
+    layout(
+      scene = list(
+        xaxis = list(title = "Gamma"),
+        yaxis = list(title = "True alpha"),
+        zaxis = list(title = "MSE", range = c(0, min(0.1, max(toBePlotted_gamma_matrix))) ),
+        aspectmode = "manual", aspectratio = list(x=1.5, y=1.5, z=1)
+      )
+    )
+  
+  return (list(plot_logScale = plot_logScale,
+               plot_LinearScale = plot_LinearScale))
+}
+```
+
+
+# MMD_gaussian $h=id$
+
+### Logarithmic scale
+
+
+```{r}
+result_Gaussian = my_plots(nameEstimator_ = "MMD_gaussian", nOutliers_ = 50)
+```
+
+
+```{r}
+htmltools::tagList(list(result_Gaussian$plot_logScale))
+# print(result_Gaussian$plot_logScale)
+```
+
+
+### Original scale
+
+
+```{r}
+# print(result_Gaussian$plot_LinearScale)
+htmltools::tagList(list(result_Gaussian$plot_LinearScale))
+```
+
+# MMD_gaussian $h=\Phi^{-1}$
+
+### Logarithmic scale
+
+```{r}
+# print(result_Gaussian$plot_LinearScale)
+result_Gaussian.KG = my_plots(nameEstimator_ = "MMD_gaussian.Phi", nOutliers_ = 50)
+htmltools::tagList(list(result_Gaussian.KG$plot_logScale))
+```
+
+### Original scale
+
+```{r}
+htmltools::tagList(list(result_Gaussian.KG$plot_LinearScale))
+```
+
+
+
+

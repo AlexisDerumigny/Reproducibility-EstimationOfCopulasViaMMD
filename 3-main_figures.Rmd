@@ -1,0 +1,197 @@
+---
+title: "Figures related to the MMD estimator of copulas"
+author: "Pierre Alquier, Badr-Eddine Chérief-Abdellatif, Alexis Derumigny, and Jean-David Fermanian"
+output: pdf_document
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(tidyverse)
+```
+
+
+```{r, data loading and aggregation}
+source("2-aggregation.R")
+```
+
+
+# Comparison of kernels as a function of gamma (Figure 1)
+
+```{r, fig.width=8, fig.height=4}
+totalAggregated %>% 
+  dplyr::filter(n == 1000, family == 1,
+                !(nameEstimator %in% c("Itau", "CML")),
+                typeOutliers == "top_left0.001",
+                nOutliers == 50,
+                methodTauInit == "unif(-0.95;0.95)"
+  ) %>% 
+  dplyr::filter(trueTau > -0.9 & trueTau < 0.9) %>%    # Avoiding the border for stability
+  group_by(n, typeOutliers, nOutliers, methodTauInit, gamma, nameEstimator) %>%
+  summarise(MSE_wrstCase = max(MSE), .groups = "keep") %>%
+  mutate(nameEstimator_ = nameEstimator) %>%
+  mutate(nameEstimator = 
+           case_when(
+             nameEstimator_ == "MMD_gaussian" ~ "MMD_gaussian",
+             nameEstimator_ == "MMD_exp-l2" ~ "MMD_exp-l2",
+             nameEstimator_ == "MMD_exp-l1" ~ "MMD_exp-l1",
+             nameEstimator_ == "MMD_gaussian.Phi" ~ "MMD_gaussian",
+             nameEstimator_ == "MMD_exp-l2.Phi" ~ "MMD_exp-l2",
+             nameEstimator_ == "MMD_exp-l1.Phi" ~ "MMD_exp-l1"),
+         nOutliers = factor(nOutliers, levels = sort(unique(nOutliers))),
+         hasPhi = ifelse(nameEstimator_ %in% 
+                           c("MMD_gaussian.Phi", "MMD_exp-l2.Phi", "MMD_exp-l1.Phi"),
+                         "h = Phi", "h = id")) %>%
+  ggplot() + 
+  geom_line(aes(x = gamma, y = MSE_wrstCase, color = nameEstimator)) +
+  scale_y_log10() +
+  scale_x_log10(breaks = c(0.05, 0.1, 0.2, 0.4, 0.8, 1.6)) +
+  facet_wrap(vars(hasPhi)) + 
+  ylab("Worst-case MSE")
+
+# ggsave(filename = "plot_MSE_gamma.pdf", device = cairo_pdf)
+```
+
+
+# Comparison between different contaminations (Figure 2)
+
+```{r, fig.width=8, fig.height=8}
+totalAggregated %>% 
+  dplyr::filter(
+    n == 1000, family == 1, trueTau == 0.5,
+    nameEstimator %in% c("CML", "Itau", "MMD_gaussian","MMD_gaussian.Phi"),
+    typeOutliers != "0",
+    if_else(nameEstimator %in% c("CML", "Itau"),
+            TRUE,
+            gamma == if_else(nameEstimator == "MMD_gaussian", 0.25, 0.8) & 
+              methodTauInit == "unif(-0.95;0.95)" )
+  ) %>% 
+  mutate(pOutliers = 100 * nOutliers / n,
+         typeOutliers_ = case_when(
+           typeOutliers == "top_left0.001" ~ "Top-left",
+           typeOutliers == "bottom_left0.001" ~ "Bottom-left",
+           typeOutliers == "cop_clayton_0.5" ~ "Clayton 0.5",
+           typeOutliers == "cop_Frank_-0.8" ~ "Frank -0.8",
+           typeOutliers == "cop_gauss_-0.8" ~ "Gauss -0.8",
+           typeOutliers == "cop_gauss_0.2" ~ "Gauss 0.2",
+           typeOutliers == "cop_student_0.5_3df" ~ "Student 0.5 3df",
+           typeOutliers == "unif_diag_x=y" ~ "Diagonal",
+           typeOutliers == "unif0_1" ~ "Uniform",
+         )) %>%
+  ggplot() + 
+  geom_line(aes(x = pOutliers, y = MSE, color = nameEstimator)) +
+  scale_y_log10(breaks = c(1e-4, 1e-3, 1e-2, 1e-1)) +
+  facet_wrap(vars(typeOutliers_))
+
+# ggsave(filename = "plot_MSE_contam.pdf", device = cairo_pdf)
+```
+
+
+# Comparison between families (Figure 3)
+
+```{r, fig.height=6, fig.width=8}
+bind_rows(
+  totalAggregated %>%
+    dplyr::filter(
+      n == 1000, family != 1, trueTau == 0.5,
+      nameEstimator %in% c("CML", "Itau", "MMD_gaussian","MMD_gaussian.Phi"),
+      typeOutliers == "top_left0.001",
+      if_else(nameEstimator %in% c("CML", "Itau"),
+              TRUE,
+              methodTauInit == if_else(family %in% c(1,5),
+                                       "unif(-0.95;0.95)", "unif(0.05;0.95)") &
+                gamma == if_else(
+                  family %in% c(1,5),
+                  if_else(nameEstimator %in% c("MMD_gaussian", "MMD_exp-l2", "MMD_exp-l1"),
+                          0.25, 0.8),
+                  if_else(nameEstimator %in% c("MMD_gaussian", "MMD_exp-l2", "MMD_exp-l1"),
+                          0.1, 0.4),
+                ) )
+    ) %>%
+    mutate(family_name = VineCopula::BiCopName(family, short = FALSE),
+           family = as.character(family)) , 
+  
+  totalAggregated_MO %>% 
+    dplyr::filter(n == 1000, truePar == 0.5, 
+                  if_else(nameEstimator %in% c("CML", "Itau"),
+                          TRUE,
+                          gamma == if_else(nameEstimator %in% c("MMD_gaussian"), 0.2, 0.8) ) ) %>%
+    mutate(family_name = "Marshall-Olkin") , 
+  
+)  %>% 
+  mutate(pOutliers = 100 * nOutliers / n,
+         family_fac = factor(family_name,
+                             levels = c("Clayton", "Gumbel",
+                                        "Frank","Marshall-Olkin") ) ) %>%
+  ggplot() + 
+  geom_line(aes(x = pOutliers, y = MSE, color = nameEstimator)) +
+  # geom_ribbon(aes(x = pOutliers, ymin = MSE_q05, ymax = MSE_q95,
+  # fill = nameEstimator), alpha = 0.1) +
+  scale_y_log10(breaks = c(1e-4, 2.5e-4, 5e-4, 1e-3, 2.5e-3, 5e-3, 1e-2, 2.5e-2, 5e-2)) +
+  facet_wrap(vars(family_fac))
+
+# ggsave(filename = "plot_MSE_family.pdf", device = cairo_pdf)
+```
+
+
+# Comparison as a function of n (Figure 4)
+
+```{r, fig.width=8}
+totalAggregated %>% 
+  dplyr::filter(
+    family == 1,
+    nameEstimator %in% c("CML", "Itau", "MMD_gaussian","MMD_gaussian.Phi"),
+    trueTau == 0.5,
+    typeOutliers == "top_left0.001",
+    if_else(nameEstimator %in% c("CML", "Itau"),
+            TRUE,
+            methodTauInit == "unif(-0.95;0.95)" &
+              gamma == if_else(nameEstimator == "MMD_gaussian", 0.25, 0.8) )
+  ) %>% 
+  mutate(pOutliers = 
+           factor(paste0(100 * nOutliers / n, "% outliers"),
+                  levels = paste0(100 * sort(unique(nOutliers / n)), "% outliers"))) %>%
+  dplyr::filter(pOutliers %in% c("0% outliers","5% outliers","10% outliers")) %>% 
+  ggplot() + 
+  geom_line(aes(x = n, y = MSE, color = nameEstimator)) +
+  scale_y_log10(breaks = c(2.5e-5, 5e-5,
+                           1e-4, 2.5e-4, 5e-4,
+                           1e-3, 2.5e-3, 5e-3,
+                           1e-2, 2.5e-2, 5e-2, 1e-1)) +
+  scale_x_log10() +
+  facet_wrap(vars(pOutliers))
+
+# ggsave(filename = "plot_MSE_n.pdf", device = cairo_pdf)
+```
+
+
+
+# Comparison of the initialisation methods (Figure 7 of the supplement)
+
+```{r fig.width=8}
+totalAggregated %>% 
+  dplyr::filter(n == 1000,
+                family == 1,
+                nameEstimator %in% c("MMD_gaussian", "MMD_gaussian.Phi"),
+                typeOutliers == "top_left0.001",
+                nOutliers %in% c(0,50)
+  ) %>% dplyr::filter(trueTau > -0.9 & trueTau < 0.9) %>%
+  group_by(n, typeOutliers, nOutliers, methodTauInit, gamma, nameEstimator) %>%
+  summarise(MSE_wrstCase = max(MSE), 
+            .groups = "keep") %>%
+  mutate(nameEstimator = 
+           factor(nameEstimator,
+                  levels = c("MMD_gaussian", "MMD_exp-l2", "MMD_exp-l1",
+                             "MMD_gaussian.Phi", "MMD_exp-l2.Phi", "MMD_exp-l1.Phi")),
+         nOutliers = factor(nOutliers, levels = sort(unique(nOutliers)))) %>%
+  ggplot() + 
+  geom_line(aes(x = gamma, y = MSE_wrstCase, color = methodTauInit, linetype = nOutliers)) +
+  scale_y_log10() +
+  scale_x_log10(breaks = c(0.05,0.1,0.2,0.4,0.8,1.6)) +
+  facet_wrap(vars(nameEstimator)) + 
+  ylab("Worst-case MSE")
+
+# ggsave(filename = "plot_MSE_init.pdf", device = cairo_pdf)
+```
+

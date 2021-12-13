@@ -1,0 +1,75 @@
+---
+title: "Figures related to the confidence intervals for MMD estimation of copulas"
+author: "Pierre Alquier, Badr-Eddine Chérief-Abdellatif, Alexis Derumigny, and Jean-David Fermanian"
+date: "19 November 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(tidyverse)
+```
+
+
+# Loading of the data
+
+```{r}
+my_filepath = here::here()
+filenames = paste0(my_filepath, "/simus_CI_tau_", 1:8, ".csv")
+
+# my_colnames = c("n", "family", "trueTau",
+#                  "typeOutliers", "nOutliers",
+#                  "gamma", "nameEstimator", "methodTauInit", "tauInit",
+#                  "nResampling", "subsamplingSize", "corrSubSampling", "level",
+#                  "lowerCI.Tau", "upperCI.Tau", "lowerCI.Par", "upperCI.Par",
+#                  "userTime", "systemTime", "realTime")
+
+totalData_CI = filenames %>%
+  map( function(x){return(if(file.exists(x)){x} else {NULL})} ) %>%
+  unlist() %>%
+  map_dfr(read.csv, sep = ";", dec = ".", header = TRUE) %>%
+  mutate(realTime = as.numeric(realTime),
+         upperCI.Tau = as.numeric(upperCI.Tau),
+         lowerCI.Tau = as.numeric(lowerCI.Tau),
+         upperCI.Par = as.numeric(upperCI.Par),
+         lowerCI.Par = as.numeric(lowerCI.Par),
+         lengthCI.Tau = upperCI.Tau - upperCI.Tau,
+         tauInit = as.numeric(tauInit),
+         trueTau = as.numeric(trueTau),
+         family = as.numeric(family),
+         lengthCI.Tau = upperCI.Tau - lowerCI.Tau,
+         isInCI.Tau = trueTau >= lowerCI.Tau & trueTau <= upperCI.Tau,
+         family_name = factor(VineCopula::BiCopName(family, short = FALSE),
+                              levels = c("Gaussian", "Clayton", "Gumbel","Frank") )
+         )
+```
+
+
+# Boxplot of the lengths of the confidence intervals
+
+```{r}
+totalData_CI %>%
+  ggplot() + 
+  geom_boxplot(aes(x = n, y = lengthCI.Tau, color = subsamplingSize)) +
+  facet_wrap(vars(family_name))
+
+# ggsave(paste0(my_filepath, "boxplot_length_CI_Tau.pdf"), device = cairo_pdf)
+```
+
+
+# Figure giving the coverage of the confidence intervals
+
+```{r}
+totalData_CI %>%
+  group_by(n, family, family_name, trueTau, typeOutliers, nOutliers,
+           gamma, nameEstimator, methodTauInit,
+           nResampling, subsamplingSize, corrSubSampling, level) %>%
+  summarise(probInCI.Tau = mean(isInCI.Tau), .groups = "keep") %>%
+  ggplot() + 
+  geom_col(aes(x = n, y = probInCI.Tau, fill = subsamplingSize),
+           position = position_dodge2()) +
+  facet_wrap(vars(family_name)) +
+  coord_cartesian(ylim = c(0.75,1))
+
+# ggsave(paste0(my_filepath, "coverage_pct_Tau.pdf"), device = cairo_pdf)
+```

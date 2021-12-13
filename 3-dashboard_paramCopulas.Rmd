@@ -1,0 +1,250 @@
+---
+title: "MSE of regular parametric copulas as a function of Kendall's tau and the tuning parameter gamma"
+date: "07/03/2021"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: rows
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(tidyverse)
+library(plotly)
+```
+
+
+```{r, data loading and aggregation}
+source("2-aggregation.R")
+```
+
+
+```{r, functions for main plotting}
+
+my_plots <- function(family_ = 1, nameEstimator_ = "MMD_gaussian",
+                     nOutliers_ = 50, n_ = 1000, methodTauInit_ = "unif(-0.95;0.95)")
+{
+  # 1 - Data preparation ---------------------------------------------
+  
+  aggregated_filtered = totalAggregated %>%
+    dplyr::filter(n == n_,
+           family == family_,
+           nameEstimator == nameEstimator_,
+           nOutliers == nOutliers_,
+           methodTauInit == methodTauInit_,
+           typeOutliers == "top_left0.001")
+  
+  if (nrow(aggregated_filtered) == 0){
+    print("No corresponding observations")
+    return (NULL)
+  }
+  
+  # Construction of the matrix:
+  # columns: the different values of gamma
+  # lines: the different trueTaus
+  toBePlotted_gamma = aggregated_filtered %>%
+    mutate(gamma_txt = formatC(gamma, format = "f")) %>%
+    ungroup() %>%
+    select(trueTau, MSE, gamma_txt) %>%
+    pivot_wider(values_from = MSE,
+                names_sort = TRUE,
+                names_from = gamma_txt,
+                names_prefix = "gamma_") %>%
+    select(where(function (x) {all(!is.na(x))}))
+  
+  toBePlotted_gamma_matrix = as.matrix.data.frame( toBePlotted_gamma[,-1] )
+  
+  toBePlotted_gamma_MSE_CI = aggregated_filtered %>%
+    mutate(gamma_txt = formatC(gamma, format = "f"),
+           MSE_q05_txt = formatC(MSE_q05, format = "fg", digits = 3),
+           MSE_q95_txt = formatC(MSE_q95, format = "fg", digits = 3),
+           MSE_CI = paste0("[",MSE_q05_txt,";",MSE_q95_txt, "]"
+                           # ,"<br>Nrep=", nRep, sep = ""
+                           )) %>%
+    ungroup() %>%
+    select(trueTau, MSE_CI, gamma_txt) %>%
+    pivot_wider(values_from = MSE_CI,
+                names_sort = TRUE,
+                names_from = gamma_txt,
+                names_prefix = "gamma_") %>%
+    select(where(function (x) {all(!is.na(x))}))
+  
+  vecPossibleGammas = as.numeric(str_split_fixed(
+    string = colnames(toBePlotted_gamma)[-1],
+    pattern = "_", n = 2)[,2])
+  
+  # # Finding the best gamma for each trueTau
+  # toBePlottedBestGamma = aggregated_filtered %>%
+  #   ungroup() %>%
+  #   group_by(trueTau) %>%
+  #   summarise(bestGamma = gamma[which.min(MSE)],
+  #             MSE = MSE[which.min(MSE)])
+  
+  # 2 - Plotting the graphs ---------------------------------------
+  
+  plot_logScale <- plot_ly(z = toBePlotted_gamma_matrix,
+                           x = vecPossibleGammas,
+                           y = toBePlotted_gamma$trueTau) %>%
+    add_surface(
+      surfacecolor = ( - log10( toBePlotted_gamma_matrix ) + 4)^2 ,
+      # colorscale = "Rainbow",
+      # lighting = list(ambient = 0.3),
+      showscale = FALSE,
+      customdata = toBePlotted_gamma_MSE_CI[,-1],
+      hovertemplate = paste(
+        '<b>tau</b>: %{y:.2f}',
+        '<br><b>gamma</b>: %{x:.2f}',
+        '<br><b>MSE</b>: %{z:.6f}',
+        '<br>%{customdata}',
+        '<extra></extra>')) %>%
+    # add_trace(x = toBePlottedBestGamma$bestGamma,
+    #           y = toBePlottedBestGamma$trueTau,
+    #           z = toBePlottedBestGamma$MSE*1.08,
+    #           type = "scatter3d",
+    #           mode = "lines+markers",
+    #           line = list(width = 4, color = "red", shape = "spline") ,
+    #           showlegend = FALSE,
+    #           hoverinfo = "none") %>%
+    plotly::layout(
+      scene = list(
+        xaxis = list(title = "Gamma"),
+        yaxis = list(title = "True tau"),
+        zaxis = list(title = "MSE", type = "log", dtick = 1),
+        aspectmode = "manual", aspectratio = list(x=1.5, y=1.5, z=1)
+      )
+    )
+  
+  plot_LinearScale <- plot_ly(z = toBePlotted_gamma_matrix,
+                              x = vecPossibleGammas,
+                              y = toBePlotted_gamma$trueTau) %>%
+    add_surface(
+      surfacecolor = ( - log10( toBePlotted_gamma_matrix ) + 4)^2 ,
+      # colorscale = "Rainbow",
+      # lighting = list(ambient = 0.3),
+      showscale = FALSE,
+      customdata = toBePlotted_gamma_MSE_CI[,-1],
+      hovertemplate = paste(
+        '<b>tau</b>: %{y:.2f}',
+        '<br><b>gamma</b>: %{x:.2f}',
+        '<br><b>MSE</b>: %{z:.6f}',
+        '<br>%{customdata}',
+        '<extra></extra>')) %>%
+    # add_trace(x = toBePlottedBestGamma$bestGamma,
+    #           y = toBePlottedBestGamma$trueTau,
+    #           z = toBePlottedBestGamma$MSE*1.08,
+    #           type = "scatter3d",
+    #           mode = "lines+markers",
+    #           line = list(width = 4, color = "red", shape = "spline") ,
+    #           showlegend = FALSE,
+    #           hoverinfo = "none") %>%
+    plotly::layout(
+      scene = list(
+        xaxis = list(title = "Gamma"),
+        yaxis = list(title = "True tau"),
+        zaxis = list(title = "MSE", range = c(0, min(0.1, max(toBePlotted_gamma_matrix))) ),
+        aspectmode = "manual", aspectratio = list(x=1.5, y=1.5, z=1)
+      )
+    )
+  
+  return (list(plot_logScale = plot_logScale, 
+               plot_LinearScale = plot_LinearScale))
+}
+```
+
+
+# Gaussian
+
+### Logarithmic scale
+
+
+```{r}
+result_Gaussian = my_plots(family_ = 1)
+```
+
+
+```{r}
+htmltools::tagList(list(result_Gaussian$plot_logScale))
+# print(result_Gaussian$plot_logScale)
+```
+
+
+### Original scale
+
+
+```{r}
+# print(result_Gaussian$plot_LinearScale)
+htmltools::tagList(list(result_Gaussian$plot_LinearScale))
+```
+
+
+
+# Clayton
+
+### Logarithmic scale
+
+
+```{r}
+result_Clayon = my_plots(family_ = 3, methodTauInit_ = "unif(0.05;0.95)")
+```
+
+
+```{r}
+# print(result_Clayon$plot_logScale)
+htmltools::tagList(list(result_Clayon$plot_logScale))
+```
+
+
+### Original scale
+
+
+```{r}
+htmltools::tagList(list(result_Clayon$plot_LinearScale))
+```
+
+
+# Gumbel
+
+### Logarithmic scale
+
+
+```{r}
+result_Gumbel = my_plots(family_ = 4, methodTauInit_ = "unif(0.05;0.95)")
+```
+
+
+```{r}
+htmltools::tagList(list(result_Gumbel$plot_logScale))
+# print(result_Gumbel$plot_logScale)
+```
+
+
+### Original scale
+
+
+```{r}
+htmltools::tagList(list(result_Gumbel$plot_LinearScale))
+```
+
+
+# Frank
+
+### Logarithmic scale
+
+
+```{r}
+result_Frank = my_plots(family_ = 5)
+```
+
+
+```{r}
+htmltools::tagList(list(result_Frank$plot_logScale))
+```
+
+
+### Original scale
+
+
+```{r}
+htmltools::tagList(list(result_Frank$plot_LinearScale))
+
+```
+
